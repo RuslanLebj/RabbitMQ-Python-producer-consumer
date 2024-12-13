@@ -25,7 +25,15 @@ QUEUE_NAME = os.getenv("QUEUE_NAME")
 
 TIMEOUT = 10
 
+
 async def extract_links(html, base_url):
+    """
+    Извлекает все внутренние ссылки с указанной страницы HTML.
+
+    :param html: HTML-код страницы.
+    :param base_url: Базовый URL, который будет использован для формирования абсолютных ссылок.
+    :return: Множество внутренних ссылок в формате (URL, текст ссылки).
+    """
     soup = BeautifulSoup(html, "html.parser")
     links = set()
     for a_tag in soup.find_all("a", href=True):
@@ -38,13 +46,27 @@ async def extract_links(html, base_url):
             links.add((full_url, link_text))
     return links
 
+
 async def publish_to_queue(channel, link):
+    """
+    Публикует ссылку в очередь RabbitMQ.
+
+    :param channel: Канал для отправки сообщения.
+    :param link: Ссылка, которую нужно отправить в очередь.
+    """
     await channel.default_exchange.publish(
         aio_pika.Message(body=link.encode()),
         routing_key=QUEUE_NAME,
     )
 
+
 async def process_message(channel, url):
+    """
+    Обрабатывает сообщение, извлекая ссылки с указанного URL и отправляя их в очередь RabbitMQ.
+
+    :param channel: Канал для отправки сообщений в очередь.
+    :param url: URL, с которого нужно извлечь ссылки.
+    """
     async with aiohttp.ClientSession() as session:
         html = await fetch_page(session, url)
         if html:
@@ -56,7 +78,12 @@ async def process_message(channel, url):
                 logger.info(f"Found link: {link_text} ({link_url})")
                 await publish_to_queue(channel, link_url)
 
+
 async def consume():
+    """
+    Подключается к RabbitMQ, ожидает сообщения и обрабатывает их.
+    Сообщения содержат URL, по которым необходимо извлечь ссылки и отправить их в очередь.
+    """
     connection = await aio_pika.connect_robust(
         host=RABBITMQ_HOST,
         port=RABBITMQ_PORT,
@@ -78,6 +105,7 @@ async def consume():
             except aio_pika.exceptions.QueueEmpty:
                 logger.info(f"No messages for {TIMEOUT} seconds. Stopping consumer.")
                 break
+
 
 if __name__ == "__main__":
     asyncio.run(consume())

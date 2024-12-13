@@ -23,13 +23,28 @@ RABBITMQ_USER = os.getenv("RABBITMQ_USER")
 RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD")
 QUEUE_NAME = os.getenv("QUEUE_NAME")
 
+
 async def publish_to_queue(channel, link):
+    """
+    Публикует ссылку в очередь RabbitMQ.
+
+    :param channel: Канал RabbitMQ для отправки сообщения.
+    :param link: Ссылка, которую необходимо отправить в очередь.
+    """
     await channel.default_exchange.publish(
         aio_pika.Message(body=link.encode()),
         routing_key=QUEUE_NAME,
     )
 
+
 async def extract_links(html, base_url):
+    """
+    Извлекает все внутренние ссылки из HTML-страницы.
+
+    :param html: HTML-код страницы.
+    :param base_url: Базовый URL, который будет использован для формирования абсолютных ссылок.
+    :return: Множество внутренних ссылок в формате (URL, текст ссылки).
+    """
     soup = BeautifulSoup(html, "html.parser")
     links = set()
     for a_tag in soup.find_all("a", href=True):
@@ -42,7 +57,14 @@ async def extract_links(html, base_url):
             links.add((full_url, link_text))
     return links
 
+
 async def process_url(channel, url):
+    """
+    Обрабатывает URL, извлекая ссылки с указанной страницы и публикуя их в очередь RabbitMQ.
+
+    :param channel: Канал RabbitMQ для отправки сообщений.
+    :param url: URL страницы, с которой нужно извлечь ссылки.
+    """
     async with ClientSession() as session:
         html = await fetch_page(session, url)
         if html:
@@ -54,7 +76,13 @@ async def process_url(channel, url):
                 logger.info(f"Link: {link_text} ({link_url})")
                 await publish_to_queue(channel, link_url)
 
+
 async def main(url):
+    """
+    Основная функция для подключения к RabbitMQ и обработки указанного URL.
+
+    :param url: URL страницы, с которой необходимо извлечь ссылки.
+    """
     connection = await aio_pika.connect_robust(
         host=RABBITMQ_HOST,
         port=RABBITMQ_PORT,
@@ -64,6 +92,7 @@ async def main(url):
     async with connection:
         channel = await connection.channel()
         await process_url(channel, url)
+
 
 if __name__ == "__main__":
     import sys
